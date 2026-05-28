@@ -11,10 +11,11 @@
     "start": "node src/app.js",
     "test": "jest --runInBand",
     "test:ci": "jest --ci --runInBand",
+    "test:report": "jest --ci --runInBand --json --outputFile=test-results.json",
     "ai:review": "node scripts/ai-review.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.40.1"
+    "openai": "^5.0.0"
   },
   "devDependencies": {
     "jest": "^29.7.0"
