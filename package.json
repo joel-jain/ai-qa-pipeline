@@ -1,0 +1,28 @@
+{
+  "name": "ai-qa-pipeline",
+  "version": "1.0.0",
+  "description": "AI-assisted QA pipeline with Jest and PR review automation",
+  "private": true,
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "node src/app.js",
+    "test": "jest --runInBand",
+    "test:ci": "jest --ci --runInBand",
+    "ai:review": "node scripts/ai-review.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.40.1"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "roots": [
+      "<rootDir>/tests"
+    ]
+  }
+}

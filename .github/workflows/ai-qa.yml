@@ -1,0 +1,107 @@
+name: AI QA Pipeline
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        id: test
+        continue-on-error: true
+        run: npm run test:ci
+
+      - name: Collect changed files
+        id: changed_files
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const files = await github.paginate(
+              github.rest.pulls.listFiles,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                per_page: 100
+              }
+            );
+            const list = files.map((f) => `- ${f.filename}`).join('\n');
+            core.setOutput('files', list || 'No changed files');
+
+      - name: Generate AI review
+        id: ai_review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          CHANGED_FILES: ${{ steps.changed_files.outputs.files }}
+          TEST_STATUS: ${{ steps.test.outcome }}
+        run: |
+          {
+            echo "comment<<EOF"
+            npm run ai:review
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upsert PR comment
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          COMMENT_BODY: ${{ steps.ai_review.outputs.comment }}
+        with:
+          script: |
+            const marker = '<!-- ai-qa-pipeline -->';
+            const body = process.env.COMMENT_BODY || `${marker}\nAI review unavailable.`;
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100
+            });
+            const botComment = comments.find((comment) =>
+              comment.user?.type === 'Bot' &&
+              typeof comment.body === 'string' &&
+              comment.body.includes(marker)
+            );
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: botComment.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body
+              });
+            }
+
+      - name: Fail workflow when tests fail
+        if: steps.test.outcome != 'success'
+        run: |
+          echo "Tests failed."
+          exit 1
